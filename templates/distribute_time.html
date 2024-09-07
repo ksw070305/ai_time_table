@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>공부 시간 분배</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div id="container">
+        <div id="calendar">
+            <h2 id="monthAndYear"></h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>일</th>
+                        <th>월</th>
+                        <th>화</th>
+                        <th>수</th>
+                        <th>목</th>
+                        <th>금</th>
+                        <th>토</th>
+                    </tr>
+                </thead>
+                <tbody id="calendar-body"></tbody>
+            </table>
+            <button id="save-btn">저장</button>
+        </div>
+        <div id="summary" class="summary">
+            <h3>목표 시간과 현재 추가된 시간 비교</h3>
+            <div id="korean-summary">국어: 목표 {{ study_schedule['국어'] }}시간, 현재 0시간</div>
+            <div id="math-summary">수학: 목표 {{ study_schedule['수학'] }}시간, 현재 0시간</div>
+            <div id="english-summary">영어: 목표 {{ study_schedule['영어'] }}시간, 현재 0시간</div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const studySchedule = {
+                '국어': {{ study_schedule['국어'] }},
+                '수학': {{ study_schedule['수학'] }},
+                '영어': {{ study_schedule['영어'] }}
+            };
+
+            const currentSchedule = {
+                '국어': 0,
+                '수학': 0,
+                '영어': 0
+            };
+
+            function updateSummary() {
+                document.getElementById('korean-summary').innerText = `국어: 목표 ${studySchedule['국어']}시간, 현재 ${currentSchedule['국어']}시간`;
+                document.getElementById('math-summary').innerText = `수학: 목표 ${studySchedule['수학']}시간, 현재 ${currentSchedule['수학']}시간`;
+                document.getElementById('english-summary').innerText = `영어: 목표 ${studySchedule['영어']}시간, 현재 ${currentSchedule['영어']}시간`;
+            }
+
+            function handleAddEvent(e) {
+                const subject = e.target.dataset.subject;
+                const subjectDiv = e.target.closest('div').querySelector('.subject-hours');
+                const currentHours = parseInt(subjectDiv.innerText.split(' ')[1].replace('시간', ''));
+                subjectDiv.innerText = `${subject} ${currentHours + 1}시간`;
+                currentSchedule[subject]++;
+                updateSummary();
+            }
+
+            function handleRemoveEvent(e) {
+                const subject = e.target.dataset.subject;
+                const subjectDiv = e.target.closest('div').querySelector('.subject-hours');
+                const currentHours = parseInt(subjectDiv.innerText.split(' ')[1].replace('시간', ''));
+                if (currentHours > 0) {
+                    subjectDiv.innerText = `${subject} ${currentHours - 1}시간`;
+                    currentSchedule[subject]--;
+                    updateSummary();
+                }
+            }
+
+            function generateCalendar(month, year) {
+                let calendarBody = document.getElementById('calendar-body');
+                calendarBody.innerHTML = '';
+                let monthAndYear = document.getElementById('monthAndYear');
+                monthAndYear.innerHTML = `${year}년 ${month + 1}월`;
+
+                let firstDay = (new Date(year, month)).getDay();
+                let daysInMonth = 32 - new Date(year, month, 32).getDate();
+                let date = 1;
+
+                for (let i = 0; i < 6; i++) {
+                    let row = document.createElement('tr');
+
+                    for (let j = 0; j < 7; j++) {
+                        if (i === 0 && j < firstDay) {
+                            let cell = document.createElement('td');
+                            let cellContent = document.createElement('div');
+                            cellContent.classList.add('cell-content');
+                            cell.appendChild(cellContent);
+                            row.appendChild(cell);
+                        } else if (date > daysInMonth) {
+                            break;
+                        } else {
+                            let cell = document.createElement('td');
+                            let cellContent = document.createElement('div');
+                            cellContent.classList.add('cell-content');
+                            let cellText = document.createElement('span');
+                            cellText.innerText = date;
+                            cellContent.appendChild(cellText);
+
+                            // 과목별 +, - 버튼 추가
+                            ['국어', '수학', '영어'].forEach(subject => {
+                                const subjectDiv = document.createElement('div');
+                                const subjectHours = document.createElement('span');
+                                subjectHours.classList.add('subject-hours');
+                                subjectHours.innerText = `${subject} 0시간`;
+                                subjectDiv.appendChild(subjectHours);
+
+                                const addButton = document.createElement('button');
+                                addButton.classList.add('control-btn');
+                                addButton.innerText = '+';
+                                addButton.dataset.subject = subject;
+                                addButton.addEventListener('click', handleAddEvent);
+                                subjectDiv.appendChild(addButton);
+
+                                const removeButton = document.createElement('button');
+                                removeButton.classList.add('control-btn');
+                                removeButton.innerText = '-';
+                                removeButton.dataset.subject = subject;
+                                removeButton.addEventListener('click', handleRemoveEvent);
+                                subjectDiv.appendChild(removeButton);
+
+                                cellContent.appendChild(subjectDiv);
+                            });
+
+                            cell.appendChild(cellContent);
+                            row.appendChild(cell);
+                            date++;
+                        }
+                    }
+                    calendarBody.appendChild(row);
+                }
+            }
+
+            let today = new Date();
+            let currentMonth = today.getMonth();
+            let currentYear = today.getFullYear();
+
+            generateCalendar(currentMonth, currentYear);
+
+            document.getElementById('save-btn').addEventListener('click', function() {
+                let calendarData = [];
+                document.querySelectorAll('#calendar-body td').forEach(cell => {
+                    let tasks = [];
+                    cell.querySelectorAll('.event').forEach(taskDiv => {
+                        tasks.push(taskDiv.innerText);
+                    });
+                    calendarData.push(tasks);
+                });
+
+                console.log(calendarData); // 콘솔에 이중 리스트 형태로 달력 데이터 출력
+
+                // 서버에 데이터 전송
+                fetch('/save_calendar', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ calendar: calendarData })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // +, - 버튼 숨기기
+                        document.querySelectorAll('.control-btn').forEach(btn => btn.style.display = 'none');
+                        // 저장 버튼을 수정 버튼으로 변경
+                        const saveBtn = document.getElementById('save-btn');
+                        saveBtn.innerText = '수정';
+                        saveBtn.id = 'edit-btn';
+                        saveBtn.addEventListener('click', function() {
+                            window.location.href = '/distribute_time';
+                        });
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+            });
+        });
+    </script>
+</body>
+</html>
