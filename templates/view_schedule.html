@@ -36,12 +36,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            const studySchedule = {
-                '국어': {{ study_schedule['국어'] }},
-                '수학': {{ study_schedule['수학'] }},
-                '영어': {{ study_schedule['영어'] }}
-            };
-
+            const studySchedule = {{ study_schedule | tojson }};
             const currentSchedule = {
                 '국어': {{ current_schedule['국어'] }},
                 '수학': {{ current_schedule['수학'] }},
@@ -79,14 +74,14 @@
                             cellContent.appendChild(cellText);
 
                             // 과목별 시간 표시
-                            ['국어', '수학', '영어'].forEach(subject => {
-                                const subjectDiv = document.createElement('div');
-                                const subjectHours = document.createElement('span');
-                                subjectHours.classList.add('subject-hours');
-                                subjectHours.innerText = `${subject} ${currentSchedule[subject]}시간`;
-                                subjectDiv.appendChild(subjectHours);
-                                cellContent.appendChild(subjectDiv);
-                            });
+                            if (studySchedule[date]) {
+                                studySchedule[date].forEach(event => {
+                                    const eventDiv = document.createElement('div');
+                                    eventDiv.classList.add('event');
+                                    eventDiv.innerText = event;
+                                    cellContent.appendChild(eventDiv);
+                                });
+                            }
 
                             cell.appendChild(cellContent);
                             row.appendChild(cell);

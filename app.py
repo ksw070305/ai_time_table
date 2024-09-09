@@ -13,6 +13,31 @@ def get_db_connection():
     connection.row_factory = sqlite3.Row
     return connection
 
+def load_model(subject):
+    model_path = f"C:/project/ai_time_table/models/{subject}(g-t).pkl"
+    with open(model_path, 'rb') as file:
+        model = pickle.load(file)
+    return model
+
+def predict_study_time(target_grade):
+    # 모델 로드
+    korean_model = load_model('korean')
+    math_model = load_model('math')
+    english_model = load_model('english')
+
+    # 예측 수행
+    korean_time = korean_model.predict([[target_grade]])[0]
+    math_time = math_model.predict([[target_grade]])[0]
+    english_time = english_model.predict([[target_grade]])[0]
+
+    # 한 달 분량으로 변환하고 정수로 반올림
+    study_schedule = {
+        '국어': round(korean_time * 4),
+        '수학': round(math_time * 4),
+        '영어': round(english_time * 4)
+    }
+    return study_schedule
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -32,6 +57,8 @@ def login():
             session['student_id'] = student_id
             if not student['target_grade']:
                 return redirect(url_for('set_target'))
+            elif student['study_schedule']:
+                return redirect(url_for('view_schedule'))
             else:
                 return redirect(url_for('distribute_time'))
         else:
@@ -42,7 +69,7 @@ def login():
 def set_target():
     if request.method == 'POST':
         student_id = session.get('student_id')
-        target_grade = request.form['target_grade']
+        target_grade = int(request.form['target_grade'])
         study_schedule = predict_study_time(target_grade)
         
         connection = get_db_connection()
@@ -58,34 +85,7 @@ def set_target():
         return redirect(url_for('distribute_time'))
     return render_template('set_target.html')
 
-def predict_study_time(target_grade):
-    model_paths = {
-        '국어': 'C:/project/ai_time_table/models/korean(g-t).pkl',
-        '수학': 'C:/project/ai_time_table/models/math(g-t).pkl',
-        '영어': 'C:/project/ai_time_table/models/english(g-t).pkl'
-    }
-    
-    study_time = {}
-    for subject, model_path in model_paths.items():
-        weekly_hours = predict(target_grade, model_path)[0]
-        monthly_hours = round(weekly_hours * 4)  # 4배 후 반올림
-        study_time[subject] = monthly_hours
-    
-    return study_time
-
-def predict(target_grade, model_path):
-    with open(model_path, 'rb') as file:
-        model = pickle.load(file)
-
-    # 예측할 데이터 준비하기 (예: X_new)
-    X_new = [[float(target_grade)]]  # 새로운 데이터
-
-    # 예측 수행하기
-    predictions = model.predict(X_new)
-
-    return predictions
-
-@app.route('/distribute_time', methods=['GET', 'POST'])
+@app.route('/distribute_time')
 def distribute_time():
     student_id = session.get('student_id')
     if not student_id:
@@ -132,7 +132,13 @@ def view_schedule():
     connection.close()
     
     study_schedule = json.loads(student['study_schedule']) if student['study_schedule'] else {}
-    return render_template('view_schedule.html', study_schedule=study_schedule)
+    current_schedule = {
+        '국어': sum([int(event.split(' ')[1].replace('시간', '')) for day in study_schedule for event in day if event.startswith('국어')]),
+        '수학': sum([int(event.split(' ')[1].replace('시간', '')) for day in study_schedule for event in day if event.startswith('수학')]),
+        '영어': sum([int(event.split(' ')[1].replace('시간', '')) for day in study_schedule for event in day if event.startswith('영어')])
+    }
+    
+    return render_template('view_schedule.html', study_schedule=study_schedule, current_schedule=current_schedule)
 
 @app.route('/reset_targets')
 def reset_targets():
@@ -142,6 +148,18 @@ def reset_targets():
     connection.commit()
     connection.close()
     return "목표 등급이 성공적으로 초기화되었습니다."
+
+def reset_monthly_schedule():
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    cursor.execute('UPDATE students SET study_schedule = NULL WHERE strftime("%m", last_update) != strftime("%m", "now")')
+    connection.commit()
+    connection.close()
+
+@app.before_request
+def before_request():
+    reset_monthly_schedule()
+    reset_targets()
 
 if __name__ == '__main__':
     app.run(debug=True)
